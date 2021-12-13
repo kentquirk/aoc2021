@@ -57,7 +57,18 @@ func isAlreadyVisited(visited []string, node string) bool {
 func traverse(cavemap map[string][]string, visited []string, canRevisitSmallCave bool, self string) int {
 	neighbors := cavemap[self]
 	pathCount := 0
-	newVisited := append(visited, self)
+
+	// The original version of this code did this:
+	// newVisited := append(visited, self)
+	// This is technically unsafe, since newVisited might (and usually will)
+	// point to the same backing array as visited. However, since we only ever
+	// lengthen it, and the two slices have different values for length, it's
+	// actually safe in this context. The code below is safe even if we had
+	// modified the data in the slice -- but it's also noticeably slower.
+	// (on my machine, the code below runs in .33 vs .11 seconds)
+	newVisited := make([]string, len(visited)+1)
+	copy(newVisited, visited)
+	newVisited = append(newVisited, self)
 
 	for _, n := range neighbors {
 		newCanRevisitSmallCave := canRevisitSmallCave
