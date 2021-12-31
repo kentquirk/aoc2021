@@ -30,16 +30,45 @@ func (a *Algorithm) GetBit(index int) bool {
 	return ((*big.Int)(a)).Bit(511-index) == 1
 }
 
+func (a *Algorithm) NeedsInvert() bool {
+	return a.GetBit(0) && !a.GetBit(511)
+}
+
 type Coord struct {
 	R int
 	C int
 }
 
-type Image map[Coord]int
+type Image struct {
+	m        map[Coord]bool
+	inverted bool
+}
+
+func MakeImage(inverted bool) Image {
+	return Image{
+		m:        make(map[Coord]bool),
+		inverted: inverted,
+	}
+}
+
+func (img Image) IsInverted() bool {
+	return img.inverted
+}
+
+func (img Image) Get(c Coord) bool {
+	p := img.m[c]
+	return p != img.inverted
+}
+
+func (img Image) Set(c Coord, v bool) {
+	if img.inverted != v {
+		img.m[c] = true
+	}
+}
 
 func (img Image) Extents() (Coord, Coord) {
 	var lo, hi Coord
-	for c := range img {
+	for c := range img.m {
 		if c.C < lo.C {
 			lo.C = c.C
 		}
@@ -62,7 +91,7 @@ func (img Image) EnhancePixel(c Coord) int {
 	col := -1
 	bits := 0
 	for mask != 0 {
-		if x := img[Coord{R: c.R + row, C: c.C + col}]; x == 1 {
+		if img.Get(Coord{R: c.R + row, C: c.C + col}) {
 			bits |= mask
 		}
 		col++
@@ -75,16 +104,20 @@ func (img Image) EnhancePixel(c Coord) int {
 	return bits
 }
 
+func (img Image) Count() int {
+	return len(img.m)
+}
+
 // we're going to do a sparse image -- store only the white pixels in a map --
 // that way, looking up a nonexistent cell will return a zero (black) pixel
 // this also gives us the ability to get the number of lit pixels with a len() call.
 func parseImage(s string) Image {
-	img := make(Image)
+	img := MakeImage(false)
 	lines := strings.Split(s, "\n")
 	for row, l := range lines {
 		for col, c := range l {
 			if c == '#' {
-				img[Coord{R: row, C: col}] = 1
+				img.Set(Coord{R: row, C: col}, c == '#')
 			}
 		}
 	}
@@ -92,15 +125,14 @@ func parseImage(s string) Image {
 }
 
 func (img Image) Enhance(algo *Algorithm) Image {
-	result := make(Image)
+	shouldInvert := algo.NeedsInvert() && !img.IsInverted()
+	result := MakeImage(shouldInvert)
 	lo, hi := img.Extents()
 	for r := lo.R - 1; r <= hi.R+1; r++ {
 		for c := lo.C - 1; c <= hi.C+1; c++ {
 			co := Coord{R: r, C: c}
 			bitIndex := img.EnhancePixel(co)
-			if algo.GetBit(bitIndex) {
-				result[co] = 1
-			}
+			result.Set(co, algo.GetBit(bitIndex))
 		}
 	}
 	return result
@@ -111,7 +143,7 @@ func (img Image) Print() {
 	for r := lo.R; r <= hi.R; r++ {
 		for c := lo.C; c <= hi.C; c++ {
 			co := Coord{R: r, C: c}
-			if img[co] == 1 {
+			if img.Get(co) {
 				fmt.Print("#")
 			} else {
 				fmt.Print(".")
@@ -123,7 +155,7 @@ func (img Image) Print() {
 }
 
 func main() {
-	f, err := os.Open("./inputsample.txt")
+	f, err := os.Open("./input.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -139,18 +171,12 @@ func main() {
 	// fmt.Println(algo.GetBit(0), algo.GetBit(1), algo.GetBit(510), algo.GetBit(511))
 
 	img := parseImage(parts[1])
+	nTimes := 50
 
-	img.Print()
+	// img.Print()
+	for i := 0; i < nTimes; i++ {
+		img = img.Enhance(algo)
+	}
 	lo, hi := img.Extents()
-	fmt.Println(len(img), lo, hi)
-
-	img2 := img.Enhance(algo)
-	img2.Print()
-	lo, hi = img2.Extents()
-	fmt.Println(len(img2), lo, hi)
-
-	img3 := img2.Enhance(algo)
-	img3.Print()
-	lo, hi = img3.Extents()
-	fmt.Println(len(img3), lo, hi)
+	fmt.Printf("After %d enhancements, there were %d pixels lit with extents of (%v, %v)\n", nTimes, img.Count(), lo, hi)
 }
